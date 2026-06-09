@@ -7,7 +7,6 @@ import aiohttp
 
 # ================= НАСТРОЙКА БОТА =================
 API_TOKEN = '8326217743:AAHUSl8rSODzUyQTT36gkoe_8a_SRZYGyMo'
-# Твой официальный ключ Google Gemini:
 GEMINI_API_KEY = 'AIzaSyAQ.Ab8RN6KKMt6thZlExPRawRZjbFDek4WXcAYIF4cI-6lmlI_7Bg'
 
 logging.basicConfig(level=logging.INFO)
@@ -44,9 +43,11 @@ async def ask_gemini(user_id: int, new_message: str) -> str:
                     ai_text = res_json['candidates'][0]['content']['parts'][0]['text']
                     user_history[user_id].append({"role": "model", "parts": [{"text": ai_text}]})
                     return ai_text
-                return "🤖 На линии помехи. Повтори вопрос, пожалуйста!"
+                else:
+                    err_data = await response.text()
+                    return f"🤖 Ошибка сервера Google (Код {response.status}). Попробуй позже!"
         except Exception as e:
-            return "❌ Ошибка связи с сервером Google. Попробуй еще раз!"
+            return f"❌ Ошибка сети: {str(e)}"
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
@@ -67,10 +68,6 @@ async def cmd_start(message: types.Message):
     await message.answer(welcome_text, reply_markup=builder.as_markup())
 
 @dp.message()
-def handle_message_sync(message: types.Message):
-    # Создаем задачу, чтобы не блокировать поток
-    asyncio.create_task(handle_message(message))
-
 async def handle_message(message: types.Message):
     await bot.send_chat_action(chat_id=message.chat.id, action="typing")
     ai_response = await ask_gemini(message.from_user.id, message.text)
