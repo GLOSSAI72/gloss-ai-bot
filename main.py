@@ -7,6 +7,8 @@ import aiohttp
 
 # ================= НАСТРОЙКА БОТА =================
 API_TOKEN = '8326217743:AAHUSl8rSODzUyQTT36gkoe_8a_SRZYGyMo'
+# Твой официальный ключ Google Gemini:
+GEMINI_API_KEY = 'AIzaSyAQ.Ab8RN6KKMt6thZlExPRawRZjbFDek4WXcAYIF4cI-6lmlI_7Bg'
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
@@ -20,37 +22,31 @@ SYSTEM_PROMPT = (
     "обучаешь языкам и поддерживаешь как психолог. Отвечай кратко, понятно и со смайликами."
 )
 
-async def ask_ai_with_memory(user_id: int, new_message: str) -> str:
+async def ask_gemini(user_id: int, new_message: str) -> str:
     if user_id not in user_history:
         user_history[user_id] = []
     
-    user_history[user_id].append({"role": "user", "content": new_message})
+    user_history[user_id].append({"role": "user", "parts": [{"text": new_message}]})
     
     if len(user_history[user_id]) > 6:
         user_history[user_id].pop(0)
-    
-    # Формируем правильный JSON-запрос для обхода любых блокировок хостинга
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + user_history[user_id]
-    
-    payload = {
-        "messages": messages,
-        "model": "openai",
-        "jsonMode": False
-    }
+        
+    contents = user_history[user_id].copy()
+    contents.insert(0, {"role": "user", "parts": [{"text": f"Системная инструкция: {SYSTEM_PROMPT}"}]})
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     async with aiohttp.ClientSession() as session:
         try:
-            # Отправляем POST запрос напрямую в API, этот метод не блокируется серверами
-            async with session.post("https://text.pollinations.ai/", json=payload, timeout=15) as response:
+            async with session.post(url, json={"contents": contents}, timeout=15) as response:
                 if response.status == 200:
-                    ai_text = await response.text()
-                    if ai_text:
-                        ai_text = ai_text.strip().strip('"')
-                        user_history[user_id].append({"role": "assistant", "content": ai_text})
-                        return ai_text
+                    res_json = await response.json()
+                    ai_text = res_json['candidates'][0]['content']['parts'][0]['text']
+                    user_history[user_id].append({"role": "model", "parts": [{"text": ai_text}]})
+                    return ai_text
                 return "🤖 На линии помехи. Повтори вопрос, пожалуйста!"
         except Exception as e:
-            return "❌ Ошибка связи. Попробуй еще раз через секунду!"
+            return "❌ Ошибка связи с сервером Google. Попробуй еще раз!"
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
@@ -64,20 +60,24 @@ async def cmd_start(message: types.Message):
 
     welcome_text = (
         f"Приветствуем в будущем, {message.from_user.first_name}! 🪐\n\n"
-        "🤖 **GLOSS AI** успешно активирован и готов к круглосуточной работе.\n\n"
-        "Я помню контекст нашей беседы. Задай мне любой вопрос прямо в чат или открой наше графическое приложение: "
+        "🤖 **GLOSS AI** успешно активирован и переведен на официальный движок Google Gemini.\n\n"
+        "Задай мне любой вопрос прямо в чат: "
     )
     
     await message.answer(welcome_text, reply_markup=builder.as_markup())
 
 @dp.message()
+def handle_message_sync(message: types.Message):
+    # Создаем задачу, чтобы не блокировать поток
+    asyncio.create_task(handle_message(message))
+
 async def handle_message(message: types.Message):
     await bot.send_chat_action(chat_id=message.chat.id, action="typing")
-    ai_response = await ask_ai_with_memory(message.from_user.id, message.text)
+    ai_response = await ask_gemini(message.from_user.id, message.text)
     await message.answer(ai_response)
 
 async def main():
-    print("🚀 GLOSS AI запущен в ультра-быстром режиме!")
+    print("🚀 GLOSS AI на движке Gemini успешно запущен!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
