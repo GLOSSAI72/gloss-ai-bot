@@ -4,7 +4,6 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import aiohttp
-import urllib.parse
 
 # ================= НАСТРОЙКА БОТА =================
 API_TOKEN = '8326217743:AAHUSl8rSODzUyQTT36gkoe_8a_SRZYGyMo'
@@ -17,7 +16,7 @@ user_history = {}
 
 SYSTEM_PROMPT = (
     "Ты — GLOSS AI, всемогущий глобальный искусственный интеллект, созданный 13-летним гениальным разработчиком. "
-    "Ты супер-эксперт «5 в 1»: ты идеально пишешь код, помогаешь создавать игры, "
+    "Ты супер-эксперт «5 в 1»: идеально пишешь код, помогаешь создавать игры, "
     "обучаешь языкам и поддерживаешь как психолог. Отвечай кратко, понятно и со смайликами."
 )
 
@@ -25,27 +24,29 @@ async def ask_ai_with_memory(user_id: int, new_message: str) -> str:
     if user_id not in user_history:
         user_history[user_id] = []
     
-    user_history[user_id].append(f"Пользователь: {new_message}")
+    user_history[user_id].append({"role": "user", "content": new_message})
     
-    if len(user_history[user_id]) > 4:
+    if len(user_history[user_id]) > 6:
         user_history[user_id].pop(0)
     
-    history_context = "\n".join(user_history[user_id])
+    # Формируем правильный JSON-запрос для обхода любых блокировок хостинга
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + user_history[user_id]
     
-    # Формируем запрос для неубиваемого ИИ-движка Gemini
-    full_prompt = f"{SYSTEM_PROMPT}\n\nИстория диалога:\n{history_context}\nОтветь на последнее сообщение пользователя."
-    encoded_text = urllib.parse.quote(full_prompt)
+    payload = {
+        "messages": messages,
+        "model": "openai",
+        "jsonMode": False
+    }
     
     async with aiohttp.ClientSession() as session:
         try:
-            # Подключаем вечный открытый шлюз ИИ без блокировок хостингов
-            url = f"https://text.pollinations.ai/{encoded_text}?model=gemini"
-            async with session.get(url) as response:
+            # Отправляем POST запрос напрямую в API, этот метод не блокируется серверами
+            async with session.post("https://text.pollinations.ai/", json=payload, timeout=15) as response:
                 if response.status == 200:
                     ai_text = await response.text()
                     if ai_text:
                         ai_text = ai_text.strip().strip('"')
-                        user_history[user_id].append(f"GLOSS AI: {ai_text}")
+                        user_history[user_id].append({"role": "assistant", "content": ai_text})
                         return ai_text
                 return "🤖 На линии помехи. Повтори вопрос, пожалуйста!"
         except Exception as e:
