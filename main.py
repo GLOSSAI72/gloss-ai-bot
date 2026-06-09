@@ -44,8 +44,7 @@ async def ask_gemini(user_id: int, new_message: str) -> str:
                     user_history[user_id].append({"role": "model", "parts": [{"text": ai_text}]})
                     return ai_text
                 else:
-                    err_data = await response.text()
-                    return f"🤖 Ошибка сервера Google (Код {response.status}). Попробуй позже!"
+                    return f"🤖 Ошибка Gemini (Код {response.status})."
         except Exception as e:
             return f"❌ Ошибка сети: {str(e)}"
 
@@ -61,20 +60,23 @@ async def cmd_start(message: types.Message):
 
     welcome_text = (
         f"Приветствуем в будущем, {message.from_user.first_name}! 🪐\n\n"
-        "🤖 **GLOSS AI** успешно активирован и переведен на официальный движок Google Gemini.\n\n"
-        "Задай мне любой вопрос прямо в чат: "
+        "🤖 **GLOSS AI** успешно активирован и переведен на движок Google Gemini.\n\n"
+        "Задай мне любой вопрос прямо в чат!"
     )
     
     await message.answer(welcome_text, reply_markup=builder.as_markup())
 
 @dp.message()
 async def handle_message(message: types.Message):
-    await bot.send_chat_action(chat_id=message.chat.id, action="typing")
-    ai_response = await ask_gemini(message.from_user.id, message.text)
-    await message.answer(ai_response)
+    try:
+        await bot.send_chat_action(chat_id=message.chat.id, action="typing")
+        ai_response = await ask_gemini(message.from_user.id, message.text)
+        await message.answer(ai_response)
+    except Exception as e:
+        logging.error(f"Ошибка в handle_message: {e}")
 
 async def main():
-    print("🚀 GLOSS AI на движке Gemini успешно запущен!")
+    print("🚀 GLOSS AI запущен!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
